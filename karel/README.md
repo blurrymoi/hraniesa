@@ -1,0 +1,2 @@
+damaged robot karel variation
+
