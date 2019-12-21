@@ -77,26 +77,31 @@ struct grid
                 if(dk.pos.y == 0)
                     return false;
                 dk.pos.y--;
+                step_counter++;
                 return true;
             case direction::d_down:
                 if(dk.pos.y == height - 1)
                     return false;
                 dk.pos.y++;
+                step_counter++;
                 return true;
             case direction::d_right:
                 if(dk.pos.x == width - 1)
                     return false;
                 dk.pos.x++;
+                step_counter++;
                 return true;
             case direction::d_left:
                 if(dk.pos.x == 0)
                     return false;
                 dk.pos.x--;
+                step_counter++;
                 return true;
         }
     }
 
     bool holds_token() { return dk.has_token; }
+    unsigned steps_made() { return step_counter; }
     bool take()
     {
         if(holds_token()) return false;
@@ -278,10 +283,12 @@ struct grid
     }
 
     void checkers() { simple_checkers(); }
-        
+
+    void turn_around() { right(); right(); }
 
 //  private:
     Robot dk;
+    unsigned step_counter = 0;
 };
 
 template< int n, int m >
@@ -299,6 +306,83 @@ grid< n, m > random_grid( int min_tokens, int max_tokens )
     g.dk.pos.y = rand() % m;
     g.dk.dir = static_cast< typename grid< n,m >::direction >( rand() % 4 );
     return g;
+}
+
+template< int n, int m >
+grid< n, m > corner_grid()
+{
+    grid< n,m > g;
+    g.add_tokens( 0,0, n*m );
+    return g;
+}
+
+
+template< int n, int m >
+bool take_steps( grid< n,m >& g, unsigned steps, bool& take_next_right )
+{
+    while( steps )
+    {
+        if( g.step() )
+        {
+            steps--;
+            if( steps == 0 ) return true;
+        }
+        else
+        { // could not step, we have hit a wall
+            if( take_next_right ) g.right();
+            else g.left();
+            if( g.step() ) // row below
+            {
+                steps--;
+                if( take_next_right ) g.right();
+                else g.left();
+                take_next_right = !take_next_right;
+                if( steps == 0 ) return true;
+            }
+            else
+                return false; // could not make `steps` steps
+        }
+    }
+    // no more steps to take
+    return true;
+}
+
+template< int n, int m >
+void cover( grid< n,m >& g )
+{ 
+    unsigned last_steps_taken = 0;
+    bool take_next_right = true;
+    // starting on upper_left, facing up
+    g.draw();
+    g.right();   g.draw();
+    g.take();    g.draw();
+    while( take_steps( g, ++last_steps_taken, take_next_right ) )
+    {
+        g.drop();    g.draw();
+        g.turn_around();   g.draw();
+        take_steps( g, last_steps_taken, take_next_right );   g.draw();
+        g.take();     g.draw();
+        g.turn_around();     g.draw();
+    }
+    // didn't succeed in moving a layer below
+    if( take_next_right ) g.right();
+    else g.left();
+    g.draw();
+    //turn_around();    draw();
+    take_steps( g, last_steps_taken-1, take_next_right );   g.draw();
+    g.drop();    g.draw();
+    std::cout << "steps made: " << g.steps_made() << std::endl;
+    int size = n * m;
+    std::cout << std::endl;
+    for( auto x = 0; x < n; x++ )
+        for( auto y = 0; y < m; y++ )
+            assert( g.tbl[y][x].tokens > 0 );
+}
+
+constexpr unsigned cover_steps( int height, int width )
+{
+    int n = height*width - 1;
+    return ((1+n)*n) + 2*n;
 }
 
 template< int n, int m >
@@ -361,28 +445,57 @@ void test()
     }
 }
 
+
+template< int n, int m, int m_orig >
+inline void test_cover()
+{
+    if constexpr ( n == 0 || m == 0 ) return;
+    std::cout << "testing " << n << " " << m << std::endl;
+    grid< n, m > g = corner_grid< n, m >();
+    cover( g );
+    assert( g.steps_made() == cover_steps( n, m ) );
+ 
+    if constexpr ( n == 0 || m == 0 ) return;
+    else
+    {
+        if constexpr( m == m_orig )
+            test_cover< n - 1, m, m >();
+        test_cover< n, m - 1, m >();
+    }
+}
+
+/*
+template< int m >
+inline void test_cover< 0, m >()
+{
+  return;
+}
+
+template< int n >
+inline void test_cover< n, 0 >()
+{
+    return;
+}
+*/
+
 int main()
 {
 
-    //auto g = random_grid<1,3>( 2, 2 );
+    //auto g = random_grid<4,3>( 2, 2 );
     //g.collect();
     //g.checkers();
+    auto g = corner_grid< 5, 5 >();
+    //cover( g );
+    test_cover< 5, 5, 5 >();
 
+    //g.cover();
+    /*
     test< 10, 10 >();
     test< 7, 7 >();
     test< 5, 8 >();
     test< 1, 9 >();
     test< 1, 1 >();
     test< 2, 2 >();
-
-/*
-    constexpr std::array< std::pair<int,int>, 5 > sizes = {
-        {{204,204}},
-        {{95,95}},
-        {{103,28}},
-        {{1,19}},
-        {{68,34}}
-    };
-*/
+    */
 }
 
