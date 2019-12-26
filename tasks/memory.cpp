@@ -30,15 +30,6 @@ struct memory
             return nullptr;
         }
 
-       /*
- 
-            if( !freelist_head.has_next() )
-            {
-                std:cerr << "no more free memory" << std::endl;
-                return nullptr;
-            }
-         */   
-
 
         int freeblock_size = get_size( freelist_head );
         if( freeblock_size >= object_size )
@@ -47,7 +38,6 @@ struct memory
             // we have enough room to just move the ptr
             if( freeblock_size - object_size >= META_SIZE )
             {
-                //*( ( (char*)freelist_head ) + object_size ) = next_index;
                 *((int*)((char*)freelist_head + object_size + 4)) = next_index;
                 //std::cout << "freelist_head + object_size " << *((int*)((char*)freelist_head + object_size)) << std::endl;
                 *((int*)freelist_head) = object_size + 4;
@@ -64,7 +54,6 @@ struct memory
                     freelist_head = nullptr;
                 else
                     freelist_head = &arena[next_index];  //(( reinterpret_cast<char*>(freelist_head) ) + next_index + 1 );
-                    //*((int*)freelist_head) = get_size( freelist_head );
                 // already has the correct size
                 return (void*)(((int*)former_head) + 1); 
             }
@@ -75,48 +64,137 @@ struct memory
             void* freeblock_prev = nullptr;
             void* freeblock_cur  = freelist_head;
 
-            while( (freeblock_size < object_size + META_SIZE) && (next_index != -1) )
+            while( (freeblock_size < object_size) && (next_index != -1) )
             {
                 freeblock_prev = freeblock_cur;
-                freeblock_cur = (reinterpret_cast<char*>(&arena)) + next_index;
-                freeblock_size = get_size(freeblock_cur);
+                freeblock_cur = &arena[next_index]; //(reinterpret_cast<char*>(&arena)) + next_index;
+                freeblock_size = get_size( freeblock_cur );
                 next_index = get_index( freeblock_cur ); 
             }
 
-            if( freeblock_size - object_size >= META_SIZE )
+            if( freeblock_size >= object_size )
             {
-                *( ( (char*)freeblock_cur ) + object_size ) = next_index; // move index
-                *((int*)freeblock_cur) = object_size + 4; // set meta(size) of the alloced block
-                *(((int*)freeblock_prev) + 1 ) = get_index( freeblock_prev ) + object_size;  // update next_index of previous free block
-                return (void*)(((int*)freeblock_cur) + 1); 
-                
-            }
-        }
+                if( freeblock_size - object_size >= META_SIZE )
+                {
+                    *((int*)((char*)freeblock_cur + object_size + 4)) = next_index; // move index
+                    *((int*)freeblock_cur) = object_size + 4;
+                    
+                    //auto former_head = freeblock_cur;
+                    //freeblock_cur = ((reinterpret_cast<char*>(freelist_head)) + object_size);
+                    *((int*)((char*)freeblock_cur) + object_size + 4) = freeblock_size - object_size - 4;
+                    *(((int*)freeblock_prev) + 1 ) = get_index( freeblock_prev ) + object_size;  // update next_index of previous free block
+                    return (void*)(((int*)freeblock_cur) + 1); 
 
-/*
-        if( freeblock_size == object_size )
-        {
-            if( !freelist_head.has_next() )
-                freelist_head.size = 0;
+                   /*
+                    *( ( (char*)freeblock_cur ) + object_size ) = next_index; // move index
+                    *((int*)freeblock_cur) = object_size + 4; // set meta(size) of the alloced block
+                    *(((int*)freeblock_prev) + 1 ) = get_index( freeblock_prev ) + object_size;  // update next_index of previous free block
+                    return (void*)(((int*)freeblock_cur) + 1);
+                   */
+                }
+
+                else // we have to use the whole chunk
+                {
+                    auto former_head = freelist_head;
+
+                //    if( next_index == -1 )
+                //        freelist_head = nullptr;
+                //    else
+                    *(((int*)freeblock_prev) + 1) = get_index( freeblock_cur );
+                    // already has the correct size
+                    return (void*)(((int*)freeblock_cur) + 1); 
+                }
+
+            }
             else
             {
-                freelist_head.mem_index = freelist_head.next->mem_index;
-                freelist_head.size = freelist_head.next->size;
-                freelist_head.next = freelist_head.next->next;
+                std::cout << "Cannot satisfy allocation in a contiguous block." << std::endl;
             }
         }
-        if( freeblock_size.size > object_size )
-        {
-            int index = freelist_head.mem_index;
-            freelist_head.mem_index += object_size;
-            freelist_head.size -= object_size;
-            return &arena[index];
-        }
- */   
-
     }
 
-    void free( void * );
+    void free( void * ptr )
+    {
+        void* f = freelist_head;
+        void* f_prev = nullptr;
+        if( !f )
+            freelist_head = ptr;
+        else
+        {
+            bool extended_prev = false;
+            bool extended_post = false;
+
+            f_prev = freelist_head;
+            int i;
+
+            while( (i = get_index( f )) != -1 )
+            {
+                f_prev = f;
+                f = &arena[i];
+            // can extend immediately preceding block
+                int size = get_size( f );
+                if( (void*)((char*)f + size + 4) == ptr )//== arena.end() )
+                {
+                    *((int*)f) += get_size(ptr) + 4;
+                    extended_prev = true;
+                    break;
+                } 
+            // can extend immediately following block
+                if( (ptr < f) && ((char*)f-(char*)ptr == (get_size(ptr) + 4)) ) // ptr precedes f
+                {
+                    *((char*)f_prev + 4) = (char*)ptr - (char*)&arena;
+                    *((int*)ptr) += get_size( f ) + 4;
+                    extended_post = true;
+                    break;
+                }
+            }
+            // check if we could have extended on both sides
+            // go on iterating through the freelist
+            void* extended_ptr = nullptr;
+            if( extended_prev || extended_post )
+                extended_ptr = extended_prev? f : ptr;
+            if( extended_prev )
+            {
+                while( (i = get_index( f )) != -1 )
+                {
+                    f_prev = f;
+                    f = &arena[i];
+                    
+                    if( (extended_ptr < f) && ((char*)extended_ptr-(char*)f == (get_size(extended_ptr) + 4)) ) // ptr precedes f
+                    {
+                        *((char*)f_prev + 4) = (char*)extended_ptr - (char*)&arena;
+                        *((char*)extended_ptr + 4) = get_index( f );
+                        *((int*)ptr) += get_size( f ) + 4;
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                if( extended_post )
+                {
+                    // can we also extend with the immediately preceding chunk?
+                    while( (i = get_index( f )) != -1 )
+                    {
+                        f_prev = f;
+                        f = &arena[i];
+        
+                        int size = get_size( f );
+                        if( (void*)((char*)f + size + 4) == ptr )//== arena.end() )
+                        {
+                            *((int*)f) += get_size(ptr) + 4;
+                            break;
+                        }
+                    } 
+                }
+                else
+                {
+                    // haven't extended anything, append as a new free chunk
+                    
+                }
+            }
+        }
+    }
 
     memory()
     {
@@ -160,6 +238,7 @@ int main()
     std::cout << "next free: " << memory<32>::get_index( &m.arena ) << std::endl;
 
     auto m5 = m.alloc( 26 );
+    m.free(m5);
     std::cout << "address of alloced " << &m5 << std::endl;
     std::cout << "alloced size: " << memory<32>::get_size( (reinterpret_cast<int*>(m5) - 1) ) << std::endl;
   //  std::cout << "available size: " << memory<32>::get_size( m.freelist_head ) << std::endl; 
