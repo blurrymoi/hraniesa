@@ -18,7 +18,6 @@ struct memory
     //typedef sizeof( int ) meta_size;
     static_assert( arena_size >= 8, "arena size must be greater than 8" );    
 
-
     #define META_SIZE ( sizeof(int) )
 
     void *alloc( int object_size )
@@ -38,11 +37,11 @@ struct memory
             // we have enough room to just move the ptr
             if( freeblock_size - object_size >= META_SIZE )
             {
-                *((int*)((char*)freelist_head + object_size + 4)) = next_index;
+                *((int*)((char*)freelist_head + object_size + 4 + 4)) = next_index;
                 //std::cout << "freelist_head + object_size " << *((int*)((char*)freelist_head + object_size)) << std::endl;
                 *((int*)freelist_head) = object_size + 4;
                 auto former_head = freelist_head;
-                freelist_head = ((reinterpret_cast<char*>(freelist_head)) + object_size);
+                freelist_head = ((reinterpret_cast<char*>(freelist_head)) + object_size + 4);
                 *((int*)freelist_head) = freeblock_size - object_size - 4;
                 return (void*)(((int*)former_head) + 1); 
             }
@@ -95,11 +94,6 @@ struct memory
 
                 else // we have to use the whole chunk
                 {
-                    auto former_head = freelist_head;
-
-                //    if( next_index == -1 )
-                //        freelist_head = nullptr;
-                //    else
                     *(((int*)freeblock_prev) + 1) = get_index( freeblock_cur );
                     // already has the correct size
                     return (void*)(((int*)freeblock_cur) + 1); 
@@ -108,13 +102,15 @@ struct memory
             }
             else
             {
-                std::cout << "Cannot satisfy allocation in a contiguous block." << std::endl;
+                std::cerr << "Cannot satisfy allocation in a contiguous block." << std::endl;
+                return nullptr;
             }
         }
     }
 
     void free( void * ptr )
     {
+        ptr = (void*)((int*)ptr - 1); // the user is given the ptr past metadata(i.e. size)
         void* f = freelist_head;
         void* f_prev = nullptr;
         if( !f )
@@ -151,18 +147,19 @@ struct memory
             // check if we could have extended on both sides
             // go on iterating through the freelist
             void* extended_ptr = nullptr;
+            void* f_prev2;
             if( extended_prev || extended_post )
                 extended_ptr = extended_prev? f : ptr;
             if( extended_prev )
             {
                 while( (i = get_index( f )) != -1 )
                 {
-                    f_prev = f;
+                    f_prev2 = f;
                     f = &arena[i];
                     
                     if( (extended_ptr < f) && ((char*)extended_ptr-(char*)f == (get_size(extended_ptr) + 4)) ) // ptr precedes f
                     {
-                        *((char*)f_prev + 4) = (char*)extended_ptr - (char*)&arena;
+                        *((char*)f_prev2 + 4) = (char*)extended_ptr - (char*)&arena;
                         *((char*)extended_ptr + 4) = get_index( f );
                         *((int*)ptr) += get_size( f ) + 4;
                         return;
@@ -176,7 +173,7 @@ struct memory
                     // can we also extend with the immediately preceding chunk?
                     while( (i = get_index( f )) != -1 )
                     {
-                        f_prev = f;
+                        //f_prev = f;
                         f = &arena[i];
         
                         int size = get_size( f );
@@ -185,12 +182,15 @@ struct memory
                             *((int*)f) += get_size(ptr) + 4;
                             break;
                         }
+                        // we have to find the chunk that was pointing to the glued-together post-chunk and make it
+                        // point to the next one
+                        *((int*)f_prev + 1) = get_index( extended_ptr );
                     } 
                 }
                 else
                 {
                     // haven't extended anything, append as a new free chunk
-                    
+                    *((int*)f + 1) = (char*)ptr - (char*)&arena;
                 }
             }
         }
@@ -202,15 +202,10 @@ struct memory
         *(((int*)freelist_head) + 1) = -1;  
     }
 
-//private:
+private:
     /* You can use an std::array of char (or uint8_t) to represent the arena.
      * You probably want to store the 'head' of the free list outside of this
      * array of bytes. */
-
-    int get_first_available_index()
-    {
-        return 0; 
-    }
 
     // first sizeof( int ) bytes are for size of chunk
     static int get_size( void* ptr )
@@ -225,32 +220,16 @@ struct memory
     }
 
     std::array< uint8_t, arena_size > arena;
-    void* freelist_head = &arena; // why does = arena not work, does array not decay to pointer? 
+    void* freelist_head = &arena; 
+
+
+
+    friend void assert_size_eq( void*, int );
+    friend void assert_index_eq( void*, int );
+    friend void test();
+    friend void test_several_allocs();
 
 };
 
-
-int main()
-{
-    memory<32> m;
-    std::cout << "address of m " << &m << std::endl; 
-    std::cout << "available size: " << memory<32>::get_size( &m.arena ) << std::endl;
-    std::cout << "next free: " << memory<32>::get_index( &m.arena ) << std::endl;
-
-    auto m5 = m.alloc( 26 );
-    m.free(m5);
-    std::cout << "address of alloced " << &m5 << std::endl;
-    std::cout << "alloced size: " << memory<32>::get_size( (reinterpret_cast<int*>(m5) - 1) ) << std::endl;
-  //  std::cout << "available size: " << memory<32>::get_size( m.freelist_head ) << std::endl; 
-  //  std::cout << "next free: " << memory<32>::get_index( m.freelist_head ) << std::endl;
-//reinterpret_cast<char*>m5 ) << std::endl;
-
-    auto m4 = m.alloc( 4 );
-    
-    std::cout << "address of alloced " << &m4 << std::endl;
-    std::cout << "alloced size: " << memory<32>::get_size( (reinterpret_cast<int*>(m4) - 1) ) << std::endl;
-    std::cout << "available size: " << memory<32>::get_size( m.freelist_head ) << std::endl; 
-    std::cout << "next free: " << memory<32>::get_index( m.freelist_head ) << std::endl;
-}
 
 
