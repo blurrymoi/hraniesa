@@ -42,27 +42,54 @@ void test_several_allocs()
 {
     memory<32> m;
     auto m2 = m.alloc( 2 );
-    assert_size_eq( (reinterpret_cast<int*>(m2) - 1), 6 );
-    assert_size_eq( m.freelist_head, 22 );
+    assert_size_eq( (reinterpret_cast<int*>(m2) - 1), 8 );
+    assert_size_eq( m.freelist_head, 20 );
     assert_index_eq( m.freelist_head, -1 );
 
     auto m7 = m.alloc( 7 );
     assert_size_eq( (reinterpret_cast<int*>(m7) - 1), 11 );
-    assert_size_eq( m.freelist_head, 11 );
+    assert_size_eq( m.freelist_head, 9 );
 
     auto m1 = m.alloc( 1 );
-    assert_size_eq( (reinterpret_cast<int*>(m1) - 1), 5 );
-    assert_size_eq( m.freelist_head, 6 );
+    assert( m1 != nullptr );
+    assert_size_eq( (reinterpret_cast<int*>(m1) - 1), 9 );
 
     auto m72 = m.alloc( 7 );
     assert( m72 == nullptr );
 }
 
+void test_free()
+{
+    memory<40> m;
+    auto m6 = m.alloc( 6 );
+    assert_size_eq( (reinterpret_cast<int*>(m6) - 1), 10 );
+    assert_index_eq( m.freelist_head, -1 );
+    assert_size_eq( m.freelist_head, 26 );
 
+    m.free( m6 );
+    assert_size_eq( m.freelist_head, 36 );
+    assert_index_eq( m.freelist_head, -1 );
+
+    auto m3 = m.alloc( 3 );
+    assert_size_eq( (reinterpret_cast<int*>(m3) - 1), 8 );
+    assert_index_eq( m.freelist_head, -1 );
+    assert_size_eq( m.freelist_head, 28 );
+
+    auto m5 = m.alloc( 5 );
+    auto m2 = m.alloc( 2 );
+    assert_size_eq( m.freelist_head, 11 );
+    m.free( m5 );
+    
+    assert( m.freelist_head );
+    assert_size_eq( m.freelist_head, 11 );
+    assert_index_eq( m.freelist_head, 8 );    
+}
 
 int main()
 {
     test();
     std::cout << "***" << std::endl;
     test_several_allocs();
+    std::cout << "***" << std::endl;
+    test_free();
 }

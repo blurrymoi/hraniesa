@@ -11,7 +11,6 @@
 #include <array>
 #include <iostream>
 
-// size in bytes?
 template< int arena_size >
 struct memory
 {
@@ -22,27 +21,26 @@ struct memory
 
     void *alloc( int object_size )
     {
-
         if( !freelist_head )
         {
             std::cerr << "no more free memory" << std::endl;
             return nullptr;
         }
 
+        if( object_size < 4 ) object_size = 4; // we need space to store index if we free the block
 
         int freeblock_size = get_size( freelist_head );
         if( freeblock_size >= object_size )
         {
             int next_index = get_index( freelist_head );
             // we have enough room to just move the ptr
-            if( freeblock_size - object_size >= META_SIZE )
+            if( freeblock_size - object_size >= 2*META_SIZE )
             {
-                *((int*)((char*)freelist_head + object_size + 4 + 4)) = next_index;
-                //std::cout << "freelist_head + object_size " << *((int*)((char*)freelist_head + object_size)) << std::endl;
-                *((int*)freelist_head) = object_size + 4;
+                set_ptr(freelist_head, object_size + 4 + 4, next_index); // move index
+                set_ptr(freelist_head, 0, object_size + 4); // set size metadata of newly allocated block
                 auto former_head = freelist_head;
-                freelist_head = ((reinterpret_cast<char*>(freelist_head)) + object_size + 4);
-                *((int*)freelist_head) = freeblock_size - object_size - 4;
+                freelist_head = ((reinterpret_cast<char*>(freelist_head)) + object_size + 4); // move freelist
+                set_ptr( freelist_head, 0, freeblock_size - object_size - 4 ); // set size of free block
                 return (void*)(((int*)former_head) + 1); 
             }
             else // we have to use the whole chunk
@@ -52,8 +50,8 @@ struct memory
                 if( next_index == -1 )
                     freelist_head = nullptr;
                 else
-                    freelist_head = &arena[next_index];  //(( reinterpret_cast<char*>(freelist_head) ) + next_index + 1 );
-                // already has the correct size
+                    freelist_head = &arena[next_index];
+                set_ptr( freelist_head, 0, get_size( freelist_head ) + 4 );
                 return (void*)(((int*)former_head) + 1); 
             }
         }
@@ -66,36 +64,28 @@ struct memory
             while( (freeblock_size < object_size) && (next_index != -1) )
             {
                 freeblock_prev = freeblock_cur;
-                freeblock_cur = &arena[next_index]; //(reinterpret_cast<char*>(&arena)) + next_index;
+                freeblock_cur = &arena[next_index];
                 freeblock_size = get_size( freeblock_cur );
                 next_index = get_index( freeblock_cur ); 
             }
 
             if( freeblock_size >= object_size )
             {
-                if( freeblock_size - object_size >= META_SIZE )
+                if( freeblock_size - object_size >= 2*META_SIZE )
                 {
-                    *((int*)((char*)freeblock_cur + object_size + 4)) = next_index; // move index
-                    *((int*)freeblock_cur) = object_size + 4;
+                    set_ptr( freeblock_cur, object_size + 4 + 4, next_index );
+                    set_ptr( freeblock_cur, 0, object_size + 4 );
                     
-                    //auto former_head = freeblock_cur;
-                    //freeblock_cur = ((reinterpret_cast<char*>(freelist_head)) + object_size);
-                    *((int*)((char*)freeblock_cur) + object_size + 4) = freeblock_size - object_size - 4;
-                    *(((int*)freeblock_prev) + 1 ) = get_index( freeblock_prev ) + object_size;  // update next_index of previous free block
+                    set_ptr( freeblock_cur, object_size + 4, freeblock_size - object_size - 4 );
+                    // update next_index of previous free block
+                    *(((int*)freeblock_prev) + 1 ) = get_index( freeblock_prev ) + object_size;                      
                     return (void*)(((int*)freeblock_cur) + 1); 
-
-                   /*
-                    *( ( (char*)freeblock_cur ) + object_size ) = next_index; // move index
-                    *((int*)freeblock_cur) = object_size + 4; // set meta(size) of the alloced block
-                    *(((int*)freeblock_prev) + 1 ) = get_index( freeblock_prev ) + object_size;  // update next_index of previous free block
-                    return (void*)(((int*)freeblock_cur) + 1);
-                   */
                 }
 
                 else // we have to use the whole chunk
                 {
-                    *(((int*)freeblock_prev) + 1) = get_index( freeblock_cur );
-                    // already has the correct size
+                    set_ptr( freeblock_prev, 4, get_index( freeblock_cur ) );
+                    set_ptr( freeblock_cur, 0, get_size( freeblock_cur ) + 4 );
                     return (void*)(((int*)freeblock_cur) + 1); 
                 }
 
@@ -121,29 +111,32 @@ struct memory
             bool extended_post = false;
 
             f_prev = freelist_head;
-            int i;
+            int i = get_index( f );
 
-            while( (i = get_index( f )) != -1 )
-            {
+            do {
                 f_prev = f;
-                f = &arena[i];
             // can extend immediately preceding block
                 int size = get_size( f );
-                if( (void*)((char*)f + size + 4) == ptr )//== arena.end() )
+                if( (void*)((char*)f + size + 4) == ptr )
                 {
                     *((int*)f) += get_size(ptr) + 4;
                     extended_prev = true;
                     break;
                 } 
             // can extend immediately following block
-                if( (ptr < f) && ((char*)f-(char*)ptr == (get_size(ptr) + 4)) ) // ptr precedes f
+                if( (ptr < f) && ((char*)f-(char*)ptr == get_size(ptr)) ) // ptr precedes f
                 {
-                    *((char*)f_prev + 4) = (char*)ptr - (char*)&arena;
-                    *((int*)ptr) += get_size( f ) + 4;
+                    if( f == freelist_head ) freelist_head = ptr;
+                    else
+                        *((char*)f_prev + 4) = (char*)ptr - (char*)&arena; // ?
+                    *((int*)ptr) += get_size( f );
                     extended_post = true;
                     break;
                 }
-            }
+                if( i != -1 ) 
+                    f = &arena[i];
+
+            } while ( (i = get_index( f )) != -1 );
             // check if we could have extended on both sides
             // go on iterating through the freelist
             void* extended_ptr = nullptr;
@@ -157,7 +150,8 @@ struct memory
                     f_prev2 = f;
                     f = &arena[i];
                     
-                    if( (extended_ptr < f) && ((char*)extended_ptr-(char*)f == (get_size(extended_ptr) + 4)) ) // ptr precedes f
+                    // ptr precedes f
+                    if( (extended_ptr < f) && ((char*)extended_ptr-(char*)f == (get_size(extended_ptr) + 4)) )
                     {
                         *((char*)f_prev2 + 4) = (char*)extended_ptr - (char*)&arena;
                         *((char*)extended_ptr + 4) = get_index( f );
@@ -173,11 +167,10 @@ struct memory
                     // can we also extend with the immediately preceding chunk?
                     while( (i = get_index( f )) != -1 )
                     {
-                        //f_prev = f;
                         f = &arena[i];
         
                         int size = get_size( f );
-                        if( (void*)((char*)f + size + 4) == ptr )//== arena.end() )
+                        if( (void*)((char*)f + size + 4) == ptr )
                         {
                             *((int*)f) += get_size(ptr) + 4;
                             break;
@@ -214,6 +207,12 @@ private:
         return *((int*)ptr);
     }
 
+    static void set_ptr( void* ptr, int offset, int val )
+    {
+        if( !ptr ) return;
+        *((int*)((char*)ptr + offset)) = val;
+    }
+
     static int get_index( void* ptr )
     {
         return *( ( reinterpret_cast< int * >( ptr ) ) + 1 );
@@ -223,13 +222,11 @@ private:
     void* freelist_head = &arena; 
 
 
-
     friend void assert_size_eq( void*, int );
     friend void assert_index_eq( void*, int );
     friend void test();
     friend void test_several_allocs();
+    friend void test_free();
 
 };
-
-
 
