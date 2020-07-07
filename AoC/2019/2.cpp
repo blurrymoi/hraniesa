@@ -39,7 +39,7 @@ vec_int::iterator at( vec_int& v, unsigned pos, int offset )
     return v.begin() + position;
 }
 
-bool perform_op( std::vector< int >& v, unsigned pos )
+bool perform_op( vec_int& v, unsigned pos )
 {
     int opcode = v[ pos ];
 
@@ -58,21 +58,36 @@ bool perform_op( std::vector< int >& v, unsigned pos )
     return true;
 }
 
-int main()
+void run( vec_int& v )
 {
-    std::vector< int > v;
-    parse_code( "2.txt", v );
-
     int pos = 0;
-
+    
     while( perform_op( v, pos ) )
         pos += 4;
+
+    //assert( v[ pos ] == 99 );
 
     if( v[ pos ] != 99 )
         std::cerr << "unknown opcode: " << v[ pos ] << std::endl;
     else
         std::cerr << "success" << std::endl;
+}
 
+
+#include  "2-test.cpp"
+
+int main()
+{
+    test();
+
+    std::vector< int > v;
+    parse_code( "2.txt", v );
+
+    v[ 1 ] = 12;
+    v[ 2 ] = 2;
+
+    run( v );
     print( v );
 }
+
 
