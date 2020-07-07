@@ -65,14 +65,35 @@ void run( vec_int& v )
     while( perform_op( v, pos ) )
         pos += 4;
 
-    //assert( v[ pos ] == 99 );
+    assert( v[ pos ] == 99 );
 
-    if( v[ pos ] != 99 )
+/*
+    if( v[ pos ] != 99 );
         std::cerr << "unknown opcode: " << v[ pos ] << std::endl;
     else
         std::cerr << "success" << std::endl;
+*/
 }
 
+// noun, verb
+std::pair< int,int > find( vec_int& v, int output )
+{
+    vec_int origin = v;
+
+    for( int i = 0; i < 100; i++ )
+        for( int j = 0; j < 100; j++ )
+        {
+            v = origin;
+            v[ 1 ] = i;
+            v[ 2 ] = j;
+            run( v );
+
+            if ( v[ 0 ] == output )
+                return { i, j };
+        }
+
+    return { -1, -1 };
+}
 
 #include  "2-test.cpp"
 
@@ -83,11 +104,18 @@ int main()
     std::vector< int > v;
     parse_code( "2.txt", v );
 
+    vec_int orig = v;
+
     v[ 1 ] = 12;
     v[ 2 ] = 2;
 
     run( v );
     print( v );
-}
 
+    // -std=c++17
+    auto [ noun, verb ] = find( orig, 19690720 );
+    std::cout << "noun " << noun << " verb " << verb << std::endl;
+
+    return 0;
+}
 
