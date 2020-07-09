@@ -1,3 +1,12 @@
+/*
+    Find whether two wires intersect given a sequence of turns/lines:
+    R7,U32 = wire goes right for 7 steps, up for 32.
+    * I use a multimap for 1 wire from x coord to y coords and check as
+    the other wire goes whether it crosses the first wire. Keep a running
+    min (is supposed to find closest crossing to the origin).
+    * For the second part, I only added a step count to the multimap.
+*/
+
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -16,12 +25,27 @@ int distance( point a )
 
 struct wire
 {
-    // x -> y
-    std::multimap< int, int > coords;
+    // x -> < y, steps >
+    std::multimap< int, std::pair< int, int > > coords;
 
-    void add( int x, int y )
+    void add( int x, int y, int steps )
     {
-        coords.emplace( x, y );
+        coords.emplace( x, std::make_pair( y, steps ) );
+    }
+
+    int steps( int x, int y )
+    {
+        auto rg = coords.equal_range( x );
+
+        int min = -1;
+        for( auto it = rg.first; it != rg.second; ++it )
+            if( (*it).second.first == y )
+            {
+                int m = (*it).second.second;
+                min = min == -1? m : m < min? m : min;
+            }
+
+        return min;
     }
 };
 
@@ -44,7 +68,7 @@ std::pair< point, int > parse_line( std::string prompt )
     return { dir, std::stoi( prompt ) };
 }
 
-void append_coord_line( point& from, std::string prompt, wire& w )
+void append_coord_line( point& from, std::string prompt, wire& w, int& steps )
 {
     auto [ dir, dist ] = parse_line( prompt );
 
@@ -55,7 +79,8 @@ void append_coord_line( point& from, std::string prompt, wire& w )
     {
         x += dir.first;
         y += dir.second;
-        w.add( x, y );
+        steps++;
+        w.add( x, y, steps );
     }
 }
 
@@ -65,7 +90,7 @@ bool crosses( point a, wire& w )
     {
         auto range = w.coords.equal_range( a.first );
         for( auto it = range.first; it != range.second; ++it )
-            if( (*it).second == a.second )
+            if( (*it).second.first == a.second )
                 return true;
     }
     return false;
@@ -103,12 +128,14 @@ int closest_distance( std::string wire1, std::string wire2 )
     std::vector< std::string > coords = split( wire1 );
     wire w1;
     point origin( 0, 0 );
+    int steps = 0;
 
     for( auto line : coords )
-        append_coord_line( origin, line, w1 );
+        append_coord_line( origin, line, w1, steps );
 
-    int x = 0, y = 0;
-    int res_dist = -1;
+    int x = 0, y = 0, steps_w2 = 0;
+    //int res_dist = -1;
+    int fewest_steps = -1;
     std::vector< std::string > w2 = split( wire2 );
     for( auto line : w2 )
     {
@@ -117,14 +144,18 @@ int closest_distance( std::string wire1, std::string wire2 )
         {
             x += dir.first;
             y += dir.second;
+            steps_w2++;
             if( crosses( {x,y}, w1 ) )
             {
-                int d = distance( {x,y} );
-                res_dist = res_dist == -1? d : d < res_dist? d : res_dist;
+                //int d = distance( {x,y} );
+                //res_dist = res_dist == -1? d : d < res_dist? d : res_dist;
+                int steps_cumm = w1.steps( x, y ) + steps_w2;
+                if( fewest_steps == -1 ) fewest_steps = steps_cumm;
+                else if( steps_cumm < fewest_steps ) fewest_steps = steps_cumm;
             }
         }
     }
-    return res_dist;
+    return fewest_steps;
 }
 
 void test();
