@@ -3,7 +3,6 @@
 # two adjacent digits are the same
 # non-decreasing
 
-POSITIONS = 5
 MIN = 137683
 MAX = 596253
 
@@ -11,13 +10,18 @@ def meets_criteria( x ):
 
     has_double = False
     x = str( x )
+    sqlen = 0
 
     for c in range( 5 ):
-        if not has_double and x[c] == x[c+1]:
+        if x[c] == x[c+1]:
+            sqlen += 1
+        elif not has_double and sqlen == 1:
             has_double = True
+        else:
+            sqlen = 0
         if x[c] > x[c+1]:
             return False
-    return has_double
+    return has_double or sqlen == 1
 
 def bruteforce():
 
@@ -25,7 +29,6 @@ def bruteforce():
 
     for x in range( MIN, MAX+1 ):
         if meets_criteria( x ):
-            # print( x )
             count += 1
     print( count )
 
