@@ -48,7 +48,7 @@ vec_int::iterator at( vec_int& v, unsigned pos, int offset, int modes )
 }
 
 // < success, steps/operands >
-std::pair< bool, int > perform_op( vec_int& v, unsigned pos, int& in )
+std::pair< bool, int > perform_op( vec_int& v, int& pos, int& in )
 {
     int opcode = v[ pos ];
     int modes  = opcode / 100;
@@ -69,7 +69,32 @@ std::pair< bool, int > perform_op( vec_int& v, unsigned pos, int& in )
             in = *at( v, pos, 1, modes );
             std::cout << "OUTPUT: " << in << std::endl;
             return { true, 1 };
-      
+
+        // jump-if-true, jump-if-false
+        case 5:
+        case 6:
+         {
+            int cond = *at( v, pos, 1, modes );
+            if( (opcode == 5 && cond != 0) || (opcode == 6 && cond == 0) )
+            {
+                pos = *at( v, pos, 2, modes );
+                return { true, 0 };
+            }
+            return { true, 2 }; 
+         }
+
+        // lesser than, equal
+        case 7:
+        case 8:
+         {
+            int i1 = *at( v, pos, 1, modes );
+            int i2 = *at( v, pos, 2, modes );
+            if( (opcode == 7 && i1 < i2) || (opcode == 8 && i1 == i2) )
+                *at( v, pos, 3, modes ) = 1;
+            else
+                *at( v, pos, 3, modes ) = 0;
+            return { true, 3 };
+         }
         default:
             return { false, 0 };
     }
@@ -78,13 +103,14 @@ std::pair< bool, int > perform_op( vec_int& v, unsigned pos, int& in )
 void run( vec_int& v )
 {
     int pos = 0;
-    int inout = 1;
+    int inout = 5;
 
     std::pair< bool, int > result = perform_op( v, pos, inout );
 
     while( result.first ) 
     {
-        pos += result.second + 1;
+        if( result.second != 0 )
+            pos += result.second + 1;
         result = perform_op( v, pos, inout );
     }
 }
@@ -93,10 +119,7 @@ int main()
 {
     std::vector< int > v;
     parse_code( "5.txt", v );
-    //print( v );
-
     run( v );
-    //print( v );
 
     return 0;
 }
