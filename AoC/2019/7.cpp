@@ -69,7 +69,7 @@ std::pair< bool, int > perform_op( vec_int& v, int& pos, int& in )
         case 4:
             in = *at( v, pos, 1, modes );
             std::cout << "OUTPUT: " << in << std::endl;
-            return { true, 1 };
+            return { true, 200 };
 
         // jump-if-true, jump-if-false
         case 5:
@@ -101,44 +101,107 @@ std::pair< bool, int > perform_op( vec_int& v, int& pos, int& in )
     }
 }
 
-void run( vec_int& v, int phase, int& signal )
+// <input, output>, position
+std::pair< std::pair< int, int >, int > run( vec_int& v, int& input, int pos = 0 )
 {
-    int pos = 0;
-    int inout = phase;
+    int inout = input;
 
     std::pair< bool, int > result = perform_op( v, pos, inout );
 
     while( result.first ) 
     {
-        if ( result.second == 100 ) // request next input
+        if ( result.second == 100 ) // input was used, request next input
         {
-            inout = signal;
             pos += 2;
+            return { { 100, 0 }, pos };
         }
+        else if( result.second == 200 ) // output was produced
+        {
+            pos += 2;
+            return { { 200, inout }, pos };
+        }
+
         else if( result.second != 0 )
             pos += result.second + 1;
+
         result = perform_op( v, pos, inout );
     }
-    signal = inout; // use output as input for next amplifier
+
+    return { { 99, 0 }, pos }; // halted
 }
+
+
+class Amplifier
+{
+    std::vector< int > _code;
+    int pos = 0;
+    int _input;
+    int _output;
+
+  public:
+    bool halted = false;
+
+    Amplifier( vec_int v, int phase, int signal )
+      : _code( v ), _input( phase )
+    {
+        auto ret = run( _code, _input );
+        pos = ret.second;
+        resume_execution( signal );
+    }
+
+    void resume_execution( int input )
+    {
+        _input = input;
+
+        auto ret = run( _code, _input, pos );
+        if( ret.first.first == 100 )
+            ret = run( _code, _input, ret.second );
+
+        assert( ret.first.first != 100 ); // output or halt
+        _output = ret.first.second;
+        pos = ret.second;
+        if( ret.first.first == 99 )
+            halted = true;
+    }
+
+    int output() { return _output; }
+};
+
 
 int main()
 {
-    vec_int v;
-    parse_code( "7.txt", v );
-    vec_int vec_orig = v;
+    vec_int vec_orig;
+    parse_code( "7.txt", vec_orig );
     int signal = 0;
     int max = -1;
 
-    vec_int phases { 0, 1, 2, 3, 4 };
+    vec_int phases { 5, 6, 7, 8, 9 };
     do {
         print( phases );
         signal = 0;
+        std::vector< Amplifier > amps;
+
         for( int i : phases )
         {
-            v = vec_orig;
-            run( v, i, signal );
+            if( i != phases[0] )
+                signal = amps[ amps.size() - 1 ].output();
+            amps.push_back( Amplifier( vec_orig, i, signal ) );
         }
+
+        while( !amps[ 4 ].halted )
+        {
+            for( int i = 0; i < 5; ++i )
+            {
+                amps[ i ].resume_execution( amps[ ((i - 1) + 5) % 5 ].output() );
+                if( amps[ i ].halted )
+                {
+                    amps[ 4 ].halted = true;
+                    break;
+                }
+            }
+        }
+
+        signal = amps[ 4 ].output();
         if( max == -1 || signal > max ) max = signal;
 
     } while( std::next_permutation( phases.begin(), phases.end() ) );
