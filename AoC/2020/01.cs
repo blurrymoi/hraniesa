@@ -23,9 +23,9 @@ class Sum
         return i;
     }
 
-    static bool check_opposite( int i, ref Dictionary< int, List< int > > hs )
+    static bool check_opposite( int i, int sum, ref Dictionary< int, List< int > > hs )
     {
-        int opp = 2020 - i;
+        int opp = sum - i;
         return ( hs.ContainsKey( hash( opp ) ) && hs[ hash( opp ) ].Contains( opp ) );
     }
 
@@ -44,12 +44,23 @@ class Sum
                 hs[ key ] = new List< int >();
             hs[ key ].Add( line_i );
 
-            if( check_opposite( line_i, ref hs ) )
+            /*
+                if( check_opposite( line_i, 2020, ref hs ) )
+                {
+                    Console.WriteLine( "Has a twin! " + line_i + " " + ( 2020 - line_i ) );
+                    Console.WriteLine( line_i * ( 2020 - line_i ) );
+                }
+            */
+            foreach( int k in hs.Keys )
             {
-                Console.WriteLine( "Has a twin! " + line_i );
-                if( check_opposite( 2020 - line_i, ref hs ) )
-                    Console.WriteLine( "Yes it really contains " + ( 2020 - line_i ) );
-                Console.WriteLine( line_i * ( 2020 - line_i ) );
+                foreach( int i in hs[ k ] )
+                    if( check_opposite( i, 2020 - line_i, ref hs ) )
+                    {
+                        Console.WriteLine( "Has a t..triplet? " + line_i + " "
+                                           + i + " " + ( 2020 - line_i - i ) );
+                        Console.WriteLine( line_i * i * ( 2020 - line_i - i ) );
+                        return;
+                    }
             }
         }
 
