@@ -17,6 +17,12 @@ class Instruction
         op = parts[0];
         arg = Int32.Parse( parts[1] );
     }
+
+    public Instruction( string op, int arg )
+    {
+        this.op = op;
+        this.arg = arg;
+    }
 }
 
 class Code
@@ -27,7 +33,6 @@ class Code
         int idx = 0;
         while( !code[idx].Item2 )  // unvisited
         {
-            Console.WriteLine( $"running [{idx}], op {code[idx].Item1.op}, arg {code[idx].Item1.arg}" );
             int new_idx;
             switch( code[idx].Item1.op )
             {
@@ -47,6 +52,11 @@ class Code
                     break;
             }
             code[idx] = ( code[idx].Item1, true );
+            if( new_idx == code.Count )
+            {
+                Console.WriteLine( "terminated, " + counter );
+                return counter;
+            }
             idx = new_idx;
         }
         return counter;
@@ -62,6 +72,16 @@ class Code
         {
             var i = new Instruction( line );
             code.Add( ( i, false ) );
+        }
+
+        foreach( int idx in Enumerable.Range( 0, code.Count ) )
+        {
+            var code_cp = new List< ( Instruction, bool ) >( code );
+            if( code[idx].Item1.op == "acc" )
+                continue;
+            code_cp[idx] = ( new Instruction( code[idx].Item1.op == "jmp"? "nop" : "jmp",
+                                              code[idx].Item1.arg ), false );
+            run_code( ref code_cp ); // TODO stop at terminated
         }
 
         file.Close();
