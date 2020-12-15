@@ -27,24 +27,60 @@ class Mask
     {
         return ( n & X_one ) | ( ~( ~X_zero | n ) );
     }
+
+    public List< string > get_addresses( string n, string mask )
+    {
+        List< string > res = new List< string >();
+
+        if( mask == "" )
+        {
+            res.Add( "" );
+            return res;
+        }
+
+        char mask_last = mask[ mask.Length - 1 ];
+        string nn = n.Substring( 0, n.Length - 1 );
+        string maskn = mask.Substring( 0, n.Length - 1 );
+
+        switch( mask_last )
+        {
+            case( '1' ):
+                foreach( string a in get_addresses( nn, maskn ) )
+                    res.Add( a + '1' );
+                break;
+            case( '0' ):
+                foreach( string a in get_addresses( nn, maskn ) )
+                    res.Add( a + n[ n.Length - 1 ] );
+                break;
+            case( 'X' ):
+                foreach( string a in get_addresses( nn, maskn ) )
+                {
+                    res.Add( a + '0' );
+                    res.Add( a + '1' );
+                }
+                break;
+        }
+        return res;
+    }
 }
 
 class MaskReader
 {
-
     static void Main()
     {
         StreamReader file = new StreamReader( "14.txt" );
         string line;
 
         Mask m = new Mask();
+        string mask = "";
         var mem = new Dictionary< int, BigInteger >();
+        var mem2 = new Dictionary< string, BigInteger >();
 
         while( ( line = file.ReadLine() ) != null )
         {
             if( line.StartsWith( "mask" ) )
             {
-                string mask = line.Split( '=' )[1].Trim();
+                mask = line.Split( '=' )[1].Trim();
                 m.X_zero = Convert.ToInt64( mask.Replace( "X", "0" ), 2 );
                 m.X_one = Convert.ToInt64( mask.Replace( "X", "1" ), 2 );
             }
@@ -54,12 +90,18 @@ class MaskReader
                 BigInteger n = BigInteger.Parse( parts[1].Trim() );
                 int address = Convert.ToInt32( parts[0].Trim().Split('[')[1].Split(']')[0] );
                 mem[ address ] = m.apply_mask( n );
+
+                string ad_bin = Convert.ToString( address, 2 ).PadLeft( 36, '0' );
+                foreach( string ad in m.get_addresses( ad_bin, mask ) )
+                    mem2[ ad ] = n;
             }
         }
 
         file.Close();
         BigInteger res = mem.Aggregate( BigInteger.Zero, (sum,x) => sum + x.Value );
         Console.WriteLine( $"#1: {res}" );
+        BigInteger res2 = mem2.Aggregate( BigInteger.Zero, (sum,x) => sum + x.Value );
+        Console.WriteLine( $"#2: {res2}" );
     }
 }
 
